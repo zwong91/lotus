@@ -260,7 +260,9 @@ fn create_layer_labels(
             let cur_awaiting = &cur_awaiting;
             let ring_buf = &ring_buf;
             let base_parent_missing = &base_parent_missing;
-
+            // label runner 线程绑定
+            // 下面的变量 i 为 producer的序号 <= SDR_PRODUCERS 数
+            // 不同的 producer 绑定到不同的核心进行计算
             let core_index = if let Some(cg) = &*core_group {
                 cg.get(i + 1)
             } else {
@@ -271,6 +273,7 @@ fn create_layer_labels(
                 // It will be logged as a warning by `bind_core`.
                 debug!("binding core in producer thread {}", i);
                 // When `_cleanup_handle` is dropped, the previous binding of thread will be restored.
+                // 主线程绑定
                 let _cleanup_handle = core_index.map(|c| bind_core(*c));
 
                 create_label_runner(

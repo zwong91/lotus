@@ -22,6 +22,7 @@ lazy_static! {
 /// created with a value known to be less than the number of visible cores.
 pub struct CoreIndex(usize);
 
+//选择一个核组, PC1 计算线程只会绑定到这个这个选定的核组中的 cpu cores
 pub fn checkout_core_group() -> Option<MutexGuard<'static, CoreGroup>> {
     match &*CORE_GROUPS {
         Some(groups) => {
@@ -73,6 +74,7 @@ impl Drop for Cleanup {
     }
 }
 
+//线程 CPU 亲和力的系统调用, 计算线程和指定 Processor 的绑定本身是通过 Linux 内核提供的设置进程和线程的 CPU 亲和力 (CPU affinity) 的接口
 pub fn bind_core(core_index: CoreIndex) -> Result<Cleanup> {
     let child_topo = &TOPOLOGY;
     let tid = get_thread_id();
@@ -122,13 +124,15 @@ fn get_core_by_index(topo: &Topology, index: CoreIndex) -> Result<&TopologyObjec
     }
 }
 
+//初始化 CPU 加速核组, 默认的 CPU L3 分组
 fn core_groups(cores_per_unit: usize) -> Option<Vec<Mutex<Vec<CoreIndex>>>> {
     let topo = TOPOLOGY.lock().expect("poisoned lock");
-
+    // 通过hwloc获取 core的depth
     let core_depth = match topo.depth_or_below_for_type(&ObjectType::Core) {
         Ok(depth) => depth,
         Err(_) => return None,
     };
+    // 获取全部的 Core (物理核，不包括超线程出来的 Processor )
     let all_cores = topo
         .objects_with_type(&ObjectType::Core)
         .expect("objects_with_type failed");
@@ -136,7 +140,9 @@ fn core_groups(cores_per_unit: usize) -> Option<Vec<Mutex<Vec<CoreIndex>>>> {
 
     let mut cache_depth = core_depth;
     let mut cache_count = 1;
-
+    // 通过 core_depth 来计算 cache_count
+    // cache_count 表示 CPU 一起多少个 Core深度的 Cache 个数
+    // 这里得到的就是 CPU 的 L3 缓存个数
     while cache_depth > 0 {
         let objs = topo.objects_at_depth(cache_depth);
         let obj_count = objs.len();
@@ -149,6 +155,8 @@ fn core_groups(cores_per_unit: usize) -> Option<Vec<Mutex<Vec<CoreIndex>>>> {
     }
 
     assert_eq!(0, core_count % cache_count);
+    // 得到最终的分组数量和每组的核心数
+    // 全部核数除以 L3 缓存个数 = 缓存组数
     let mut group_size = core_count / cache_count;
     let mut group_count = cache_count;
 
