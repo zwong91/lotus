@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/filecoin-project/go-statestore"
+	"github.com/go-kit/kit/transport/http/jsonrpc"
 	"io/ioutil"
 	"net"
 	"net/http"
@@ -23,16 +25,12 @@ import (
 	"github.com/ipfs/go-datastore/namespace"
 	logging "github.com/ipfs/go-log/v2"
 	manet "github.com/multiformats/go-multiaddr/net"
-	"github.com/urfave/cli/v2"
 	"go.opencensus.io/stats/view"
 	"go.opencensus.io/tag"
 	"golang.org/x/xerrors"
 
-	"github.com/filecoin-project/go-jsonrpc"
 	"github.com/filecoin-project/go-jsonrpc/auth"
 	paramfetch "github.com/filecoin-project/go-paramfetch"
-	"github.com/filecoin-project/go-statestore"
-
 	"github.com/filecoin-project/lotus/api"
 	"github.com/filecoin-project/lotus/build"
 	lcli "github.com/filecoin-project/lotus/cli"
@@ -423,7 +421,7 @@ var runCmd = &cli.Command{
 
 		if cctx.Bool("wdpost") {
 			log.Info("Opening worker wdpost")
-			go switchWPoSt(cctx)
+			go acceptWPoSt(cctx, minerapi)
 		}
 
 		// Setup remote sector store
@@ -671,7 +669,7 @@ func setPeerId(address string, path string) error {
 	return nil
 }
 
-func switchWPoSt(cctx *cli.Context) error {
+func acceptWPoSt(cctx *cli.Context, storageApi api.StorageMiner) error {
 	ctx, _ := tag.New(lcli.DaemonContext(cctx),
 		tag.Insert(metrics.Version, build.BuildVersion),
 		tag.Insert(metrics.Commit, build.CurrentCommit),
@@ -735,6 +733,31 @@ func switchWPoSt(cctx *cli.Context) error {
 		return err
 	}
 
+	//apiPolicy, err := config.ParseStorageApiPolicy(cctx.String("storage-api"))
+	//if err != nil {
+	//	return xerrors.Errorf("Parser storage api policy, err: %w", err)
+	//}
+
+	//创建和从cli flag参数初始化miner配置结构体
+	//taskConfig := &config.MinerTaskConfig{
+	//	// ApiPolicy:    apiPolicy,
+	//	WinningPost:  cctx.Bool("winning-post"),
+	//
+	//	WindowPost:   cctx.Bool("window-post"),
+	//	PostOffset:   cctx.Uint64("wdpost-offset"),
+	//	PostIndex:    cctx.Uint64("wdpost-index"),
+	//
+	//	//SealingMgr:   cctx.Bool("sealing-mgr"),
+	//	//SectorStore:  cctx.Bool("sector-store"),
+	//	//DealsMgr:     cctx.Bool("deals-mgr"),
+	//}
+
+	//// 检测并且响应环境变量的覆盖
+	//err = taskConfig.OverrideFromEnv() // check and override the config from env vars
+	//if err != nil {
+	//	return xerrors.Errorf("TaskConfig override from env err: %w", err)
+	//}
+
 	shutdownChan := make(chan struct{})
 
 	var minerapi api.StorageMiner
@@ -743,6 +766,8 @@ func switchWPoSt(cctx *cli.Context) error {
 		node.Override(new(dtypes.ShutdownChan), shutdownChan),
 		node.Base(),
 		node.Repo(r),
+		// 覆盖SectorIndex的创建为上述连接的storageApi rpc接口实例
+		node.Override(new(stores.SectorIndex), storageApi),
 		node.Override(new(v1api.FullNode), nodeApi),
 	)
 	if err != nil {

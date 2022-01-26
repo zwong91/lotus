@@ -2,6 +2,7 @@ package config
 
 import (
 	"github.com/ipfs/go-cid"
+	cid "github.com/ipfs/go-cid/_rsrch/cidiface"
 
 	"github.com/filecoin-project/lotus/chain/types"
 	sectorstorage "github.com/filecoin-project/lotus/extern/sector-storage"
@@ -381,4 +382,17 @@ type Wallet struct {
 
 type FeeConfig struct {
 	DefaultMaxFee types.FIL
+}
+
+type MinerTaskConfig struct {
+	// ApiPolicy   StorageApiPolicy
+	WinningPost bool
+
+	WindowPost  bool
+	PostOffset  uint64
+	PostIndex   uint64
+
+	//SealingMgr  bool
+	//SectorStore bool
+	//DealsMgr    bool
 }
